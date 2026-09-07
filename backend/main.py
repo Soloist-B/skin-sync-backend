@@ -4,6 +4,11 @@ from tensorflow.keras.models import load_model
 from PIL import Image
 import numpy as np
 import io
+import os
+
+# บังคับใช้ CPU และจำกัดเธรดเพื่อประหยัดแรมบน Render
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 app = FastAPI()
 
@@ -15,9 +20,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-print("กำลังโหลดโมเดล 7 Classes...")
-model = load_model("skin_efficientnetv2_7classes_best.keras")
-print("✅ โหลดโมเดลสำเร็จ!")
+# ตัวแปรเก็บโมเดล (ยังไม่โหลดตอนนี้ เพื่อประหยัดแรมเริ่มต้น)
+model = None
+
+def get_model():
+    global model
+    if model is None:
+        print("กำลังโหลดโมเดล 7 Classes (Lazy Loading)...")
+        model = load_model("skin_efficientnetv2_7classes_best.keras")
+        print("✅ โหลดโมเดลสำเร็จ!")
+    return model
 
 # ชื่อคลาส 7 อย่างตามโมเดลของคุณ
 CLASSES = [
@@ -33,7 +45,6 @@ THRESHOLD = 0.20 # 20%
 
 def preprocess_image(image_bytes):
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    # ขนาด 384x384 ตามที่โมเดลระบุ
     img = img.resize((384, 384)) 
     img_array = np.array(img, dtype=np.float32)
     img_array = np.expand_dims(img_array, axis=0)
@@ -45,19 +56,18 @@ async def predict_acne(file: UploadFile = File(...)):
         contents = await file.read()
         processed_image = preprocess_image(contents)
         
-        # รันโมเดลทำนายผล (เอา array ตัวแรกออกมาเหมือนใน Colab)
-        predictions = model.predict(processed_image)[0]
+        # ดึงโมเดลมาใช้ (จะโหลดเข้าแรมเฉพาะตอนที่มีคนเรียกใช้งานครั้งแรก)
+        current_model = get_model()
+        predictions = current_model.predict(processed_image)[0]
         
         all_scores = []
         detected_issues = []
         
-        # วนลูปเช็คทั้ง 7 คลาส
         for i, pred in enumerate(predictions):
             score = float(pred)
             item = {"class_name": CLASSES[i], "probability": score}
             all_scores.append(item)
             
-            # ถ้าเกิน Threshold 20% ถือว่าพบปัญหา
             if score >= THRESHOLD:
                 detected_issues.append(item)
         
