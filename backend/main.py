@@ -1,23 +1,14 @@
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-import tensorflow as tf
+from tensorflow.keras.models import load_model
 from PIL import Image
 import numpy as np
 import io
 import os
 
-# บังคับใช้ CPU และจำกัดเธรดเพื่อประหยัดแรมบน Render
+# บังคับใช้ CPU 100% ตัดปัญหาเรื่องการเรียกหาการ์ดจอหรือ CUDA บน Render
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
-
-# ตั้งค่าให้ TensorFlow ค่อยๆ จองแรม ไม่ให้กินโควตารวดเดียวหมด
-gpus = tf.config.list_physical_devices('GPU')
-if not gpus:
-    try:
-        # เปิดใช้งาน memory growth สำหรับ CPU/RAM ทั่วไป
-        tf.config.set.set_soft_device_placement(True)
-    except Exception as e:
-        print(e)
 
 app = FastAPI()
 
