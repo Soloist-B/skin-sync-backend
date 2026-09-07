@@ -1,6 +1,6 @@
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from tensorflow.keras.models import load_model
+import tensorflow as tf
 from PIL import Image
 import numpy as np
 import io
@@ -9,6 +9,15 @@ import os
 # บังคับใช้ CPU และจำกัดเธรดเพื่อประหยัดแรมบน Render
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
+# ตั้งค่าให้ TensorFlow ค่อยๆ จองแรม ไม่ให้กินโควตารวดเดียวหมด
+gpus = tf.config.list_physical_devices('GPU')
+if not gpus:
+    try:
+        # เปิดใช้งาน memory growth สำหรับ CPU/RAM ทั่วไป
+        tf.config.set.set_soft_device_placement(True)
+    except Exception as e:
+        print(e)
 
 app = FastAPI()
 
@@ -20,16 +29,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ตัวแปรเก็บโมเดล (ยังไม่โหลดตอนนี้ เพื่อประหยัดแรมเริ่มต้น)
-model = None
-
-def get_model():
-    global model
-    if model is None:
-        print("กำลังโหลดโมเดล 7 Classes (Lazy Loading)...")
-        model = load_model("skin_efficientnetv2_7classes_best.keras")
-        print("✅ โหลดโมเดลสำเร็จ!")
-    return model
+print("กำลังโหลดโมเดล 7 Classes ตอนเริ่มต้นระบบ...")
+model = load_model("skin_efficientnetv2_7classes_best.keras")
+print("✅ โหลดโมเดลสำเร็จและพร้อมใช้งานแล้ว!")
 
 # ชื่อคลาส 7 อย่างตามโมเดลของคุณ
 CLASSES = [
@@ -56,9 +58,8 @@ async def predict_acne(file: UploadFile = File(...)):
         contents = await file.read()
         processed_image = preprocess_image(contents)
         
-        # ดึงโมเดลมาใช้ (จะโหลดเข้าแรมเฉพาะตอนที่มีคนเรียกใช้งานครั้งแรก)
-        current_model = get_model()
-        predictions = current_model.predict(processed_image)[0]
+        # ใช้โมเดลที่โหลดรอไว้แล้วในแรม
+        predictions = model.predict(processed_image)[0]
         
         all_scores = []
         detected_issues = []
